@@ -13,7 +13,7 @@
 #include <string.h>
 #define HTTP_PORT 80
 #define MAXNUM 6
-#define _MAX_SOCKFD_COUNT 200000
+#define _MAX_SOCKFD_COUNT 2000
 #define BUFFER_SIZE 512
 #define HTTP_BUFFER_SIZE 1024*800
 class PositiveServer

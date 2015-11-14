@@ -42,10 +42,10 @@ bool PositiveServer::InitServer(int iPort)
     //
     setsockopt(m_iSock, SOL_SOCKET, SO_REUSEADDR, &ireuseadd_on, sizeof(ireuseadd_on));
 	//keepalive
-	//setsockopt(m_iSock,SOL_SOCKET, SO_KEEPALIVE, (void*)&keepAlive, sizeof(int));
-	//setsockopt(m_iSock,SOL_TCP,TCP_KEEPIDLE,(void*)&keepIdle, sizeof(int));
-	//setsockopt(m_iSock,SOL_TCP, TCP_KEEPINTVL,(void*)&keepInterval,sizeof(int));
-	//setsockopt(m_iSock,SOL_TCP, TCP_KEEPCNT,(void*)&keepCount,sizeof(int));
+	setsockopt(m_iSock,SOL_SOCKET, SO_KEEPALIVE, (void*)&keepAlive, sizeof(int));
+	setsockopt(m_iSock,SOL_TCP,TCP_KEEPIDLE,(void*)&keepIdle, sizeof(int));
+	setsockopt(m_iSock,SOL_TCP, TCP_KEEPINTVL,(void*)&keepInterval,sizeof(int));
+	setsockopt(m_iSock,SOL_TCP, TCP_KEEPCNT,(void*)&keepCount,sizeof(int));
 	
     if(-1 == bind(m_iSock, (sockaddr*)&listen_addr,sizeof(listen_addr)))
     {
@@ -114,51 +114,12 @@ void PositiveServer::Run()
             //cout << "client  " << events[i].data.fd <<" events : "<<events[i].events<< endl;
             if(events[i].events & EPOLLIN)//监听到读事件
             {
-                /*memset(buffer, 0, sizeof(buffer));
-                int rev_size = recv(client_socket, buffer, BUFFER_SIZE,0);
-				
-                if(rev_size <= 0)//客户端断开连接
-                {
-                    //cout << "client "<< client_socket << " closed"<<endl;
-                    epoll_event event_del;
-                    event_del.data.fd = client_socket;
-                    event_del.events = 0;
-                    epoll_ctl(m_iEpollFd, EPOLL_CTL_DEL, client_socket, &event_del);
-                }
-                else//接收客户端发送过来的消息
-                {
-                    //printf("Client %d: %s\n", client_socket, buffer);
-                    epoll_event ev;
-                    //对应文件描述符的监听事件修改为写
-                    ev.events = EPOLLOUT|EPOLLERR|EPOLLHUP;
-                    ev.data.fd = client_socket;//记录句柄
-                    epoll_ctl(m_iEpollFd, EPOLL_CTL_MOD, client_socket,&ev);
-                }*/
 				http.recvHttpRequest(client_socket, m_iEpollFd);
             }
             //写事件
             else if(events[i].events &EPOLLOUT)
             {
-				/*
-                memset(buffer, 0, sizeof(buffer));
-                sprintf(buffer, "Hello, Client fd: %d",client_socket);
-                int sendsize = send(client_socket, buffer, strlen(buffer)+1,MSG_NOSIGNAL);
-                if(sendsize <= 0)
-                {
-                    struct epoll_event event_del;
-                    event_del.data.fd = client_socket;
-                    event_del.events = 0;
-                    epoll_ctl(m_iEpollFd, EPOLL_CTL_DEL, client_socket, &event_del);
-                }
-                else
-                {
-                    //printf("Server reply msg ok. msg: %s\n",buffer);
-                    epoll_event ev;
-                    ev.events = EPOLLIN|EPOLLERR|EPOLLHUP;
-                    ev.data.fd = client_socket;
-                    epoll_ctl(m_iEpollFd, EPOLL_CTL_MOD,client_socket, &ev);
-                }
-				*/
+			
 				http.sendHttpResponse(client_socket, m_iEpollFd);
             }
             else
