@@ -1,10 +1,14 @@
 #include "positiveHttp.h"
-#include "positive.h"
+
+const char  positiveHttp::badRequest[]="<html><head><title>400 Bad Request</title></head><body bgcolor=\"white\"> \
+		<center><h1>400 Bad Request</h1></center><hr><center>POSITIVE/1.0.0</center></body></html>";
+const char  positiveHttp::notFound[]="<html><head><title>404 Not Found</title></head><body bgcolor=\"white\"> \
+		<center><h1>404 Not Found</h1></center><hr><center>POSITIVE/1.0.0</center></body></html>";
+
+//字符串转换为大写		
 bool positiveHttp::checkRequest(int client_socket,positive_http_header_t parseInfo)
 {
 	//检查method
-	FILE*fp;
-	
 	if(httpMethod.find(parseInfo.method) == -1)
 	{
 		printf("Bad request\n");
@@ -12,52 +16,50 @@ bool positiveHttp::checkRequest(int client_socket,positive_http_header_t parseIn
 		return false;
 	}
 	
-	
-	int length = 0;
+	//检查url
 	char *path;
-	if(parseInfo.url.length() == 1)
+	int length 	= parseInfo.url.length();
+	cout<<"length = "<<length<<endl;
+	path = (char*)malloc((length+1)*sizeof(char));
+	parseInfo.url.copy(path,length,0);
+	path[length] = '\0';
+	printf("path = %s\n",path);
+	//对path进行处理
+	if(path[0] == '/'&&length!=1)
 	{
-		//requestUrl[client_socket]="";
-		requestUrl[client_socket]="index.html";
-		printf("checkRequest: path=index.html\n");
-		return true;
+		//把\0也拷贝了
+		memmove(path,path+1,length);
+		printf("checkRequest: path = %s\n",path);
+		requestUrl[client_socket] = path;
 	}
-	else
-	{
-		length 	= parseInfo.url.length();
-		path = (char*)malloc((length+1)*sizeof(char));
-		parseInfo.url.copy(path,length,0);
-		path[length] = '\0';
-		//printf("path = %s\n",path);
-		//检查url
-		if(path[0] == '/')
-		{
-			memmove(path,path+1,length);
-			printf("checkRequest: path = %s\n",path);
-			//strcpy(path,parseInfo.url);
-			requestUrl[client_socket]= path;
-		}
-		else
-		{
-			printf("Bad Url\n");
-			http_response[client_socket] = RES_BAD_URL;
-			free(path);
-			return false;
-		}
-	}
-	
-
-	
-	if((fp=fopen(path,"r")) == NULL)
-	{
+	//判断文件是否存在
+	struct stat statbuff;
+	if(stat(path,&statbuff)<0){
 		printf("Bad Url\n");
 		http_response[client_socket] = RES_BAD_URL;
 		free(path);
 		return false;
 	}
 	else{
-		fclose(fp);
+		//获取contentType
+		string contentType = "html";
+		int typeDotPos = requestUrl[client_socket].rfind('.',string::npos);
+		if(typeDotPos != string::npos)
+		{
+			contentType = requestUrl[client_socket].substr(typeDotPos+1);
+			//不是服务器支持的类型
+			if(supportFiles.find(contentType) == supportFiles.end())
+			{
+				requestUrl[client_socket] = "index.html";
+			}
+			cout<<"requestUrl["<<client_socket<<"] = "<<requestUrl[client_socket]<<endl;
+		}
+		else
+		{
+			requestUrl[client_socket] = "index.html";
+		}
 	}
+	cout<<client_socket<<" "<<requestUrl[client_socket]<<endl;
 	free(path);
 	//没有问题就设置为ok
 	http_response[client_socket] = RES_OK;
@@ -70,10 +72,8 @@ void positiveHttp::recvHttpRequest(int client_socket, int EpollFd)
 	 positive_http_header_t parseInfo;
 	 memset(buffer, 0, sizeof(buffer));
      int rev_size = recv(client_socket, buffer, HTTP_BUFFER_SIZE,0);
-	 printf("%s\n",buffer);
      if(rev_size <= 0)//客户端断开连接
      {
-         //cout << "client "<< client_socket << " closed"<<endl;
          epoll_event event_del;
          event_del.data.fd = client_socket;
          event_del.events = 0;
@@ -87,7 +87,7 @@ void positiveHttp::recvHttpRequest(int client_socket, int EpollFd)
 		 else{
 			 printf("parseError\n");
 		 }
-			//检查解析信息
+		 //检查解析信息
 		 checkRequest(client_socket ,parseInfo);
          epoll_event ev;
          //对应文件描述符的监听事件修改为写
@@ -132,6 +132,8 @@ int positiveHttp::parseHttpRequest(const string &request, positive_http_header_t
 		sstream >> (parseInfo->url);
 		sstream >> (parseInfo->version);
 	}
+	//处理method
+	stringOp::transformToUpper(parseInfo->method);
 	//找到
 	next = request.find(marker2, prev);
 	if(next != string::npos)
@@ -147,18 +149,67 @@ void positiveHttp::sendError(int client_socket)
 	int length = 0;
 	if(http_response[client_socket] == RES_BAD_METHOD)
 	{
-		strcpy(buffer,"<html><head><title>400 Bad Request</title></head><body bgcolor=\"white\"><center><h1>400 Bad Request</h1></center><hr><center>POSITIVE/1.0.0</center></body></html>");
+		strcpy(buffer,badRequest);
 		length = strlen(buffer)+1;
 		send(client_socket, buffer, length ,0);
 		return;
 	}
 	else if(http_response[client_socket] == RES_BAD_URL)
 	{
-		strcpy(buffer,"<html><head><title>404 Not Found</title></head><body bgcolor=\"white\"><center><h1>404 Not Found</h1></center><hr><center>POSITIVE/1.0.0</center></body></html>");
+		strcpy(buffer,notFound);
 		length = strlen(buffer)+1;
 		send(client_socket, buffer, length ,0);
 	}
 	
+}
+int positiveHttp::sendHttpHead(int client_socket,int length)
+{
+	string head("HTTP/1.1");
+	
+	char temp[50];
+	string contentType = "html";
+	if(http_response[client_socket] == RES_BAD_METHOD)
+	{
+		head.append(" 400 Bad Request\r\n");
+		length = strlen(badRequest);
+	}
+	else if(http_response[client_socket] == RES_BAD_URL)
+	{
+		head.append(" 404 Not Found\r\n");
+		length = strlen(notFound);
+	}
+	else{
+		//获取contentType
+		int typeDotPos = requestUrl[client_socket].rfind('.',string::npos);
+		if(typeDotPos != string::npos)
+		{
+			contentType = requestUrl[client_socket].substr(typeDotPos+1);
+			cout<<contentType<<endl;
+			
+		}
+		head.append(" 200 OK\r\n");
+	}
+	head.append("Server:Positive\r\n");
+	sprintf(temp,"Content-Length: %d\r\n",length);
+	head.append(temp);
+	head.append("Connection: Close\r\n");
+	
+	if(supportFiles.find(contentType) != supportFiles.end())
+	{
+		head.append(supportFiles[contentType]);
+	}
+	else{
+		head.append(supportFiles["html"]);
+	}
+	cout<<endl<<head<<endl;
+	length = head.length();
+	char buffer[length];
+	bzero(buffer,length);
+	head.copy(buffer,length,0);
+	//buffer[length] = '\0';
+	//发送头
+	send(client_socket, buffer, length ,0);
+	return 0;
 }
 void positiveHttp::sendHttpResponse(int client_socket, int EpollFd)
 {
@@ -169,12 +220,13 @@ void positiveHttp::sendHttpResponse(int client_socket, int EpollFd)
 	//检查要返回的类型
 	if(http_response[client_socket] != RES_OK)
 	{
+		sendHttpHead(client_socket,0);
 		sendError(client_socket);
 	}
 	else{
-		//char closeConnection[] = "close";
 		bzero(buffer, HTTP_BUFFER_SIZE); 
 		length = getDataFromUrl(buffer, client_socket);
+		sendHttpHead(client_socket,length);
 		sendsize = send(client_socket, buffer, length ,0);
 	}
 	if(sendsize <= 0)

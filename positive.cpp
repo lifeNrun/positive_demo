@@ -1,4 +1,3 @@
-#include "positive.h"
 #include "positiveHttp.h"
 using namespace std;
 
@@ -128,7 +127,7 @@ void PositiveServer::Run()
                 epoll_ctl(m_iEpollFd, EPOLL_CTL_DEL, client_socket, &events[i]);
             }
         }
-		printf("nfds : %d\n",nfds);
+		//printf("nfds : %d\n",nfds);
         if(nfds == 0)
         {
             printf("===cross===\n");
